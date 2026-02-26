@@ -114,12 +114,15 @@ def perform_deduplication():
                     print("保存去重后的数据失败 / Failed to save deduplicated data", file=sys.stderr)
                     return "error"
             else:
-                try:
-                    os.remove(today_file)
-                    print("所有论文均为重复内容，已删除今日文件 / All papers are duplicate content, today's file deleted", file=sys.stderr)
-                except Exception as e:
-                    print(f"删除文件失败: {e} / Failed to delete file: {e}", file=sys.stderr)
-                return "no_new_content"
+                # 不删除当日文件：即使内容与历史重复，也保留当天快照，避免前端出现日期断档
+                # Keep today's file even when all papers are duplicates so the website
+                # can still render today's snapshot without date gaps.
+                print(
+                    "所有论文均为历史重复内容，保留今日文件以维持日期连续性 / "
+                    "All papers are historical duplicates; keep today's file for timeline continuity",
+                    file=sys.stderr,
+                )
+                return "has_new_content"
         else:
             print("所有内容均为新内容 / All content is new", file=sys.stderr)
             return "has_new_content"
