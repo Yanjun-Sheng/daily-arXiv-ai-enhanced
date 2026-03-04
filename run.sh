@@ -55,8 +55,8 @@ fi
 echo ""
 echo "=== 开始本地调试流程 / Starting Local Debug Workflow ==="
 
-# 获取当前日期 / Get current date
-today=`date -u "+%Y-%m-%d"`
+# 获取当前日期（本地时区）/ Get current date (local timezone)
+today=`date "+%Y-%m-%d"`
 
 echo "本地测试：爬取 $today 的arXiv论文... / Local test: Crawling $today arXiv papers..."
 
