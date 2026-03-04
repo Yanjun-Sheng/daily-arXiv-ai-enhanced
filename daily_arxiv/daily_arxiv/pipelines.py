@@ -29,4 +29,6 @@ class DailyArxivPipeline:
         item["categories"] = paper.categories
         item["comment"] = paper.comment
         item["summary"] = paper.summary
+        item["published"] = paper.published.date().isoformat() if paper.published else ""
+        item["updated"] = paper.updated.date().isoformat() if paper.updated else ""
         return item
