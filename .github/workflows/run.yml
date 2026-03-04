@@ -168,6 +168,9 @@ jobs:
     - name: Prune retained history to last 14 days
       if: steps.dedup_check.outputs.has_new_content == 'true'
       run: python scripts/prune_history.py
+      run: |
+        echo "清理旧数据，仅保留最近14天... / Pruning old data, keeping last 14 days..."
+        python scripts/prune_history.py
     - name: Update file list
       if: steps.dedup_check.outputs.has_new_content == 'true'
       run: |
