@@ -731,6 +731,9 @@ function parseJsonlData(jsonlText, date) {
       }
       
       const summary = paper.AI && paper.AI.tldr ? paper.AI.tldr : paper.summary;
+      const publishedDate = normalizeDateString(
+        paper.published || paper.published_date || paper.updated || ''
+      );
       
       result[primaryCategory].push({
         title: paper.title,
@@ -739,7 +742,8 @@ function parseJsonlData(jsonlText, date) {
         category: allCategories,
         summary: summary,
         details: paper.summary || '',
-        date: date,
+        date: publishedDate || date,
+        listedDate: date,
         id: paper.id,
         motivation: paper.AI && paper.AI.motivation ? paper.AI.motivation : '',
         method: paper.AI && paper.AI.method ? paper.AI.method : '',
@@ -1471,12 +1475,31 @@ function toggleView() {
 }
 
 function formatDate(dateString) {
+  const normalizedDate = normalizeDateString(dateString);
+  if (normalizedDate) {
+    const [year, month, day] = normalizedDate.split('-').map(Number);
+    return `${month}/${day}/${year}`;
+  }
+
   const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) {
+    return dateString;
+  }
+
   return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'numeric',
     day: 'numeric'
   });
+}
+
+function normalizeDateString(value) {
+  if (!value || typeof value !== 'string') {
+    return '';
+  }
+
+  const match = value.match(/\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : '';
 }
 
 async function loadPapersByDateRange(startDate, endDate) {
