@@ -1220,7 +1220,10 @@ function renderPapers() {
         <p class="paper-card-summary">${highlightedSummary}</p>
         <div class="paper-card-footer">
           <div class="footer-left">
-            <span class="paper-card-date">${formatDate(paper.date)}</span>
+            <div class="paper-card-date-group">
+              <span class="paper-card-date">arXiv: ${formatDate(paper.date)}</span>
+              ${paper.listedDate && paper.listedDate !== paper.date ? `<span class="paper-card-listed-date">Listed: ${formatDate(paper.listedDate)}</span>` : ''}
+            </div>
           </div>
           <span class="paper-card-link">Details</span>
         </div>
@@ -1310,7 +1313,8 @@ function showPaperDetails(paper, paperIndex) {
     <div class="paper-details ${matchedPaperClass}">
       <p><strong>Authors: </strong>${highlightedAuthors}</p>
       <p><strong>Categories: </strong>${categoryDisplay}</p>
-      <p><strong>Date: </strong>${formatDate(paper.date)}</p>
+      <p><strong>arXiv Date: </strong>${formatDate(paper.date)}</p>
+      ${paper.listedDate && paper.listedDate !== paper.date ? `<p><strong>Listed Date: </strong>${formatDate(paper.listedDate)}</p>` : ''}
       
       
       <h3>TL;DR</h3>

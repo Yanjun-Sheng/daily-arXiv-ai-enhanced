@@ -709,9 +709,21 @@ main {
   align-items: center;
 }
 
+.paper-card-date-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .paper-card-date {
   font-size: 12px;
   color: var(--text-tertiary);
+}
+
+.paper-card-listed-date {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  opacity: 0.85;
 }
 
 .paper-card-link {
