@@ -165,15 +165,10 @@ jobs:
         fi
         echo "Markdown转换完成 / Markdown conversion completed"
         
-    - name: Prune retained history to last 14 days
+    - name: Prune retained history and update file list
       if: steps.dedup_check.outputs.has_new_content == 'true'
-      run: python scripts/prune_history.py
       run: |
-        echo "清理旧数据，仅保留最近14天... / Pruning old data, keeping last 14 days..."
         python scripts/prune_history.py
-    - name: Update file list
-      if: steps.dedup_check.outputs.has_new_content == 'true'
-      run: |
         echo "更新文件列表... / Updating file list..."
         ls data/*.jsonl | sed 's|data/||' > assets/file-list.txt
         echo "文件列表更新完成 / File list updated"
