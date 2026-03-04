@@ -14,6 +14,7 @@ let currentFilteredPapers = []; // 当前过滤后的论文列表
 let textSearchQuery = ''; // 实时文本搜索查询
 let previousActiveKeywords = null; // 文本搜索激活时，暂存之前的关键词激活集合
 let previousActiveAuthors = null; // 文本搜索激活时，暂存之前的作者激活集合
+let arxivDateRangeCache = new Map(); // key: endDate -> index ranges for recent files
 
 // 加载用户的关键词设置
 function loadUserKeywords() {
@@ -691,7 +692,8 @@ async function loadPapersByDate(date) {
       return;
     }
     
-    paperData = parseJsonlData(text, date);
+    const arxivDateRanges = await buildRecentArxivDateRanges(date);
+    paperData = parseJsonlData(text, date, arxivDateRanges);
     
     const categories = getAllCategories(paperData);
     
@@ -709,7 +711,7 @@ async function loadPapersByDate(date) {
   }
 }
 
-function parseJsonlData(jsonlText, date) {
+function parseJsonlData(jsonlText, date, arxivDateRanges = null) {
   const result = {};
   
   const lines = jsonlText.trim().split('\n');
@@ -731,6 +733,7 @@ function parseJsonlData(jsonlText, date) {
       }
       
       const summary = paper.AI && paper.AI.tldr ? paper.AI.tldr : paper.summary;
+      const inferredDate = inferDateFromArxivId(paper.id, date, arxivDateRanges);
       
       result[primaryCategory].push({
         title: paper.title,
@@ -739,7 +742,8 @@ function parseJsonlData(jsonlText, date) {
         category: allCategories,
         summary: summary,
         details: paper.summary || '',
-        date: date,
+        date: inferredDate,
+        listedDate: date,
         id: paper.id,
         motivation: paper.AI && paper.AI.motivation ? paper.AI.motivation : '',
         method: paper.AI && paper.AI.method ? paper.AI.method : '',
@@ -1216,7 +1220,10 @@ function renderPapers() {
         <p class="paper-card-summary">${highlightedSummary}</p>
         <div class="paper-card-footer">
           <div class="footer-left">
-            <span class="paper-card-date">${formatDate(paper.date)}</span>
+            <div class="paper-card-date-group">
+              <span class="paper-card-date">arXiv: ${formatDate(paper.date)}</span>
+              ${paper.listedDate && paper.listedDate !== paper.date ? `<span class="paper-card-listed-date">Listed: ${formatDate(paper.listedDate)}</span>` : ''}
+            </div>
           </div>
           <span class="paper-card-link">Details</span>
         </div>
@@ -1306,7 +1313,8 @@ function showPaperDetails(paper, paperIndex) {
     <div class="paper-details ${matchedPaperClass}">
       <p><strong>Authors: </strong>${highlightedAuthors}</p>
       <p><strong>Categories: </strong>${categoryDisplay}</p>
-      <p><strong>Date: </strong>${formatDate(paper.date)}</p>
+      <p><strong>arXiv Date: </strong>${formatDate(paper.date)}</p>
+      ${paper.listedDate && paper.listedDate !== paper.date ? `<p><strong>Listed Date: </strong>${formatDate(paper.listedDate)}</p>` : ''}
       
       
       <h3>TL;DR</h3>
@@ -1471,12 +1479,154 @@ function toggleView() {
 }
 
 function formatDate(dateString) {
+  const normalizedDate = normalizeDateString(dateString);
+  if (normalizedDate) {
+    const [year, month, day] = normalizedDate.split('-').map(Number);
+    return `${month}/${day}/${year}`;
+  }
+
   const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) {
+    return dateString;
+  }
+
   return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'numeric',
     day: 'numeric'
   });
+}
+
+function normalizeDateString(value) {
+  if (!value || typeof value !== 'string') {
+    return '';
+  }
+
+  const match = value.match(/\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : '';
+}
+
+function parseArxivIdParts(arxivId) {
+  if (!arxivId || typeof arxivId !== 'string') {
+    return null;
+  }
+
+  const normalized = arxivId.trim();
+  const modernMatch = normalized.match(/^(\d{4})\.(\d{4,5})(?:v\d+)?$/);
+  if (modernMatch) {
+    return {
+      prefix: modernMatch[1],
+      serial: Number(modernMatch[2])
+    };
+  }
+
+  return null;
+}
+
+function inferDateFromArxivId(arxivId, fallbackDate, arxivDateRanges = null) {
+  if (!arxivDateRanges || arxivDateRanges.length === 0) {
+    return fallbackDate;
+  }
+
+  const idParts = parseArxivIdParts(arxivId);
+  if (!idParts) {
+    return fallbackDate;
+  }
+
+  const matchingMonthRanges = arxivDateRanges.filter(
+    (range) => range.prefix === idParts.prefix
+  );
+
+  if (matchingMonthRanges.length === 0) {
+    return fallbackDate;
+  }
+
+  // 1) prefer the range that directly contains this serial
+  const containingRange = matchingMonthRanges.find(
+    (range) => idParts.serial >= range.minSerial && idParts.serial <= range.maxSerial
+  );
+  if (containingRange) {
+    return containingRange.date;
+  }
+
+  // 2) fallback: closest range by serial distance
+  const closestRange = matchingMonthRanges.reduce((best, range) => {
+    const distance = idParts.serial < range.minSerial
+      ? range.minSerial - idParts.serial
+      : idParts.serial - range.maxSerial;
+
+    if (!best || distance < best.distance) {
+      return { range, distance };
+    }
+    return best;
+  }, null);
+
+  return closestRange ? closestRange.range.date : fallbackDate;
+}
+
+function extractArxivRangeFromJsonl(jsonlText, date) {
+  if (!jsonlText || jsonlText.trim() === '') {
+    return [];
+  }
+
+  const perPrefix = new Map();
+  const lines = jsonlText.trim().split('\n');
+
+  lines.forEach((line) => {
+    try {
+      const paper = JSON.parse(line);
+      const idParts = parseArxivIdParts(paper.id);
+      if (!idParts) {
+        return;
+      }
+
+      if (!perPrefix.has(idParts.prefix)) {
+        perPrefix.set(idParts.prefix, {
+          date,
+          prefix: idParts.prefix,
+          minSerial: idParts.serial,
+          maxSerial: idParts.serial
+        });
+        return;
+      }
+
+      const range = perPrefix.get(idParts.prefix);
+      range.minSerial = Math.min(range.minSerial, idParts.serial);
+      range.maxSerial = Math.max(range.maxSerial, idParts.serial);
+    } catch (error) {
+      console.warn('解析 arXiv ID 范围失败 / Failed to parse arXiv id range:', error);
+    }
+  });
+
+  return Array.from(perPrefix.values());
+}
+
+async function buildRecentArxivDateRanges(referenceDate) {
+  if (arxivDateRangeCache.has(referenceDate)) {
+    return arxivDateRangeCache.get(referenceDate);
+  }
+
+  const endIndex = availableDates.indexOf(referenceDate);
+  const windowDates = (endIndex === -1 ? availableDates : availableDates.slice(endIndex)).slice(0, 14);
+  const allRanges = [];
+
+  for (const date of windowDates) {
+    try {
+      const selectedLanguage = selectLanguageForDate(date);
+      const dataUrl = DATA_CONFIG.getDataUrl(`data/${date}_AI_enhanced_${selectedLanguage}.jsonl`);
+      const response = await fetch(dataUrl);
+      if (!response.ok) {
+        continue;
+      }
+      const text = await response.text();
+      allRanges.push(...extractArxivRangeFromJsonl(text, date));
+    } catch (error) {
+      console.warn(`Failed to build range for ${date}:`, error);
+    }
+  }
+
+  arxivDateRangeCache.set(referenceDate, allRanges);
+  return allRanges;
 }
 
 async function loadPapersByDateRange(startDate, endDate) {
@@ -1505,6 +1655,7 @@ async function loadPapersByDateRange(startDate, endDate) {
   `;
   
   try {
+    const arxivDateRanges = await buildRecentArxivDateRanges(endDate);
     // 加载所有日期的论文数据
     const allPaperData = {};
     
@@ -1514,7 +1665,7 @@ async function loadPapersByDateRange(startDate, endDate) {
       const dataUrl = DATA_CONFIG.getDataUrl(`data/${date}_AI_enhanced_${selectedLanguage}.jsonl`);
       const response = await fetch(dataUrl);
       const text = await response.text();
-      const dataPapers = parseJsonlData(text, date);
+      const dataPapers = parseJsonlData(text, date, arxivDateRanges);
       
       // 合并数据
       Object.keys(dataPapers).forEach(category => {

@@ -165,49 +165,10 @@ jobs:
         fi
         echo "Markdown转换完成 / Markdown conversion completed"
         
-    - name: Prune retained history to last 14 days
+    - name: Prune retained history and update file list
       if: steps.dedup_check.outputs.has_new_content == 'true'
       run: |
-        echo "清理旧数据，仅保留最近14天... / Pruning old data, keeping last 14 days..."
-        python - <<'PY14'
-from pathlib import Path
-import re
-
-retention_days = 14
-root = Path('data')
-root.mkdir(exist_ok=True)
-
-# Collect dates that have AI-enhanced files (these are what frontend renders)
-enhanced_pattern = re.compile(r'^(\d{4}-\d{2}-\d{2})_AI_enhanced_(English|Chinese)\.jsonl$')
-dates = set()
-for fp in root.glob('*_AI_enhanced_*.jsonl'):
-    m = enhanced_pattern.match(fp.name)
-    if m:
-        dates.add(m.group(1))
-
-# Fallback for early runs: if no enhanced files yet, use raw daily snapshots
-if not dates:
-    raw_pattern = re.compile(r'^(\d{4}-\d{2}-\d{2})\.jsonl$')
-    for fp in root.glob('*.jsonl'):
-        m = raw_pattern.match(fp.name)
-        if m:
-            dates.add(m.group(1))
-
-sorted_dates = sorted(dates, reverse=True)
-keep_dates = set(sorted_dates[:retention_days])
-
-for fp in root.glob('*'):
-    m = re.match(r'^(\d{4}-\d{2}-\d{2})', fp.name)
-    if not m:
-        continue
-    if m.group(1) not in keep_dates:
-        fp.unlink(missing_ok=True)
-
-print(f"kept_dates={sorted(keep_dates, reverse=True)}")
-PY14
-    - name: Update file list
-      if: steps.dedup_check.outputs.has_new_content == 'true'
-      run: |
+        python scripts/prune_history.py
         echo "更新文件列表... / Updating file list..."
         ls data/*.jsonl | sed 's|data/||' > assets/file-list.txt
         echo "文件列表更新完成 / File list updated"
